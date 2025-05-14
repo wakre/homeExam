@@ -4,6 +4,7 @@ import time
 import argparse
 
 
+
 class DRTPClient:
     def __init__(self, file_path, server_ip, server_port):
         self.file_path = file_path
@@ -29,24 +30,24 @@ class DRTPClient:
             print(f"[!] File not found: {self.file_path}")
             return
 
-       with open(self.file_path, "rb") as f:
-        seq = 0
-        while True:
-            data = f.read(1024)
-            if not data:
-                break
+        with open(self.file_path, "rb") as f:
+            seq = 0
+            while True:
+                data = f.read(1024)
+                if not data:
+                    break
 
-            self.send_packet(data, seq)
-            print(f"[Client] Sent packet {seq}")
-
-            while not self.wait_for_ack(seq):
-                print(f"[Client] Timeout on packet {seq}, retransmitting...")
                 self.send_packet(data, seq)
+                print(f"[Client] Sent packet {seq}")
 
-            seq += 1
+                while not self.wait_for_ack(seq):
+                    print(f"[Client] Timeout on packet {seq}, retransmitting...")
+                    self.send_packet(data, seq)
 
-    print("[Client] File transfer complete")
-    self.sock.close()
+                seq += 1
+
+        print("[Client] File transfer complete")
+        self.sock.close()
       
 class DRTPServer:
     def __init__(self, ip, port):
