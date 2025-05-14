@@ -46,7 +46,38 @@ class DRTPClient:
                 seq += 1
 
         print("[Client] File transfer complete")
-        self.sock.close()
+
+    def start_client(self):
+        if not os.path.isfile(self.file_path):
+            print(f"[!] File not found: {self.file_path}")
+            return
+        file_size = os.path.getsize(self.file_path)
+        start_time = time.time()  # 🚀 START
+        with open(self.file_path, "rb") as f:
+            seq = 0 
+            while True:
+                data = f.read(1024)
+                if not data:
+                    break
+
+                self.send_packet(data, seq)
+                print(f"[Client] Sent packet {seq}")
+
+                while not self.wait_for_ack(seq):
+                    print(f"[Client] Timeout on packet {seq}, retransmitting...")
+                    self.send_packet(data, seq)
+
+                seq += 1
+
+       end_time = time.time()  # 🏁 SLUTT
+       duration = end_time - start_time
+       throughput = file_size / duration if duration > 0 else 0
+
+       print(f"[Client] File transfer complete in {duration:.2f} seconds")
+       print(f"[Client] Throughput: {throughput / 1024:.2f} KB/s")
+
+       self.sock.close()
+      
 class DRTPServer:
     def __init__(self, ip, port):
         self.ip = ip
