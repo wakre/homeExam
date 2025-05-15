@@ -5,8 +5,8 @@ import argparse
 from struct import pack, unpack
 
 # --- Packet Header ---
-# New 8-byte header: seq (4), ack (2), flags (1), window (1)
-HEADER_FORMAT = '!IHB B'
+# 8-byte header: seq (4), ack (2), flags (1), window (1)
+HEADER_FORMAT = '!IHBB'
 HEADER_SIZE = 8
 
 # --- Client ---
@@ -15,7 +15,7 @@ class DRTPClient:
         self.file_path = file_path
         self.server_ip = server_ip
         self.server_port = server_port
-        self.window_size=window_size
+        self.window_size = window_size
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(2)
 
@@ -34,18 +34,6 @@ class DRTPClient:
             data, _ = self.sock.recvfrom(1024)
             _, _, flags, _ = unpack(HEADER_FORMAT, data[:HEADER_SIZE])
             return flags == expected_flag
-        except socket.timeout:
-            return False
-
-    def send_packet(self, data, seq):
-        packet = self.create_packet(seq, 0, 0, 0, data)
-        self.sock.sendto(packet, (self.server_ip, self.server_port))
-
-    def wait_for_ack(self, seq):
-        try:
-            ack_packet, _ = self.sock.recvfrom(1024)
-            ack_seq, _, flags, _ = unpack(HEADER_FORMAT, ack_packet[:HEADER_SIZE])
-            return flags == 0b0100 and ack_seq == seq
         except socket.timeout:
             return False
 
@@ -68,61 +56,56 @@ class DRTPClient:
             print(f"[!] File not found: {self.file_path}")
             return
 
-       self.start_handshake()
-       start_time = time.time()
+        self.start_handshake()
+        start_time = time.time()
 
-       with open(self.file_path, "rb") as f:
-           base = 0
-           next_seq = 0
-           window = {}
-           finished = False
+        with open(self.file_path, "rb") as f:
+            base = 0
+            next_seq = 0
+            window = {}
+            finished = False
 
-           while not finished or window:
-            # Send inntil vinduet er fullt
-               while len(window) < self.window_size and not finished:
-                   data = f.read(1016)
-                   if not data:
-                       finished = True
-                       break
-
-                   packet = self.create_packet(next_seq, 0, 0, 0, data)
-                   self.sock.sendto(packet, (self.server_ip, self.server_port))
-                   print(f"[Client] Sent packet {next_seq}")
-                   window[next_seq] = (packet, time.time())
-                   next_seq += 1
-
-            # Motta ACK-er og flytt base
-            try:
-                ack_data, _ = self.sock.recvfrom(1024)
-                ack_seq, _, flags, _ = unpack(HEADER_FORMAT, ack_data[:HEADER_SIZE])
-                if flags == 0b0100 and ack_seq in window:
-                    print(f"[Client] Received ACK for packet {ack_seq}")
-                    del window[ack_seq]
-            except socket.timeout:
-                # Resend alt i vinduet hvis timeout
-                print("[Client] Timeout. Resending unacked packets...")
-                for seq_num, (packet, _) in list(window.items()):
+            while not finished or window:
+                while len(window) < self.window_size and not finished:
+                    data = f.read(1016)
+                    if not data:
+                        finished = True
+                        break
+                    packet = self.create_packet(next_seq, 0, 0, 0, data)
                     self.sock.sendto(packet, (self.server_ip, self.server_port))
-                    print(f"[Client] Resent packet {seq_num}")
+                    print(f"[Client] Sent packet {next_seq}")
+                    window[next_seq] = (packet, time.time())
+                    next_seq += 1
 
-    end_time = time.time()
-    duration = end_time - start_time
-    file_size = os.path.getsize(self.file_path) * 8  # bits
-    throughput_mbps = file_size / (duration * 1024 * 1024)
-    print(f"[Client] File transfer completed in {duration:.2f} seconds")
-    print(f"[Client] Throughput: {throughput_mbps:.2f} Mbps")
+                try:
+                    ack_data, _ = self.sock.recvfrom(1024)
+                    ack_seq, _, flags, _ = unpack(HEADER_FORMAT, ack_data[:HEADER_SIZE])
+                    if flags == 0b0100 and ack_seq in window:
+                        print(f"[Client] Received ACK for packet {ack_seq}")
+                        del window[ack_seq]
+                except socket.timeout:
+                    print("[Client] Timeout. Resending unacked packets...")
+                    for seq_num, (packet, _) in list(window.items()):
+                        self.sock.sendto(packet, (self.server_ip, self.server_port))
+                        print(f"[Client] Resent packet {seq_num}")
 
-    self.terminate_connection()
-    self.sock.close()
+        end_time = time.time()
+        duration = end_time - start_time
+        file_size = os.path.getsize(self.file_path) * 8
+        throughput_mbps = file_size / (duration * 1024 * 1024)
+        print(f"[Client] File transfer completed in {duration:.2f} seconds")
+        print(f"[Client] Throughput: {throughput_mbps:.2f} Mbps")
+
+        self.terminate_connection()
+        self.sock.close()
 
 
 # --- Server ---
 class DRTPServer:
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, discard=False):
         self.ip = ip
         self.port = port
-        self.socket= socket
-        self.discard= discard
+        self.discard = discard
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((ip, port))
         print(f"[Server] Listening on {ip}:{port}")
@@ -131,14 +114,14 @@ class DRTPServer:
         return unpack(HEADER_FORMAT, packet[:HEADER_SIZE])
 
     def send_ack(self, addr, seq):
-        ack_packet = pack(HEADER_FORMAT, seq, 0, 0b0100, 0)  # ACK flag
+        ack_packet = pack(HEADER_FORMAT, seq, 0, 0b0100, 0)
         self.sock.sendto(ack_packet, addr)
 
     def handle_handshake(self):
         while True:
             data, addr = self.sock.recvfrom(1024)
             _, _, flags, _ = self.parse_header(data)
-            if flags == 0b1000:  # SYN
+            if flags == 0b1000:
                 print("SYN packet is received")
                 syn_ack = pack(HEADER_FORMAT, 0, 0, 0b1100, 0)
                 self.sock.sendto(syn_ack, addr)
@@ -158,35 +141,33 @@ class DRTPServer:
             print("FIN ACK packet is sent")
 
     def start_server(self):
-    expected_seq = 0
-    dropped_once = False  # Sørger for at vi bare dropper én pakke
-    with open("received_file", "wb") as f:
-        while True:
-            try:
-                packet, addr = self.sock.recvfrom(2048)
-                seq = int(packet[:8].decode())
-                data = packet[8:]
+        expected_seq = 0
+        dropped_once = False
+        with open("received_file", "wb") as f:
+            while True:
+                try:
+                    packet, addr = self.sock.recvfrom(2048)
+                    seq, _, _, _ = self.parse_header(packet)
+                    data = packet[HEADER_SIZE:]
 
-                # Simuler dropp én gang (kun første gang vi mottar riktig pakke)
-                if self.discard and not dropped_once and seq == expected_seq:
-                    print(f"[Server] Simulating drop for packet {seq}")
-                    dropped_once = True
-                    continue  # Ikke skriv til fil eller send ACK
+                    if self.discard and not dropped_once and seq == expected_seq:
+                        print(f"[Server] Simulating drop for packet {seq}")
+                        dropped_once = True
+                        continue
 
-                if seq == expected_seq:
-                    f.write(data)
-                    print(f"{time.strftime('%H:%M:%S')} -- packet {seq} is received")
-                    self.send_ack(addr, seq)
-                    print(f"{time.strftime('%H:%M:%S')} -- sending ack for the received {seq}")
-                    expected_seq += 1
-                else:
-                    print(f"{time.strftime('%H:%M:%S')} -- Unexpected seq {seq}, expected {expected_seq}")
-                    self.send_ack(addr, expected_seq - 1)
-            except KeyboardInterrupt:
-                print("\n[Server] Interrupted. Exiting.")
-                break
+                    if seq == expected_seq:
+                        f.write(data)
+                        print(f"{time.strftime('%H:%M:%S')} -- packet {seq} is received")
+                        self.send_ack(addr, seq)
+                        print(f"{time.strftime('%H:%M:%S')} -- sending ack for the received {seq}")
+                        expected_seq += 1
+                    else:
+                        print(f"{time.strftime('%H:%M:%S')} -- Unexpected seq {seq}, expected {expected_seq}")
+                        self.send_ack(addr, expected_seq - 1)
+                except KeyboardInterrupt:
+                    print("\n[Server] Interrupted. Exiting.")
+                    break
 
-                   
 
 # --- Argparse Wrapper ---
 def parse_args():
@@ -196,9 +177,10 @@ def parse_args():
     parser.add_argument("-f", "--file", type=str, help="File to send (client mode)")
     parser.add_argument("-ip", "--ip", type=str, default="127.0.0.1", help="IP address")
     parser.add_argument("-p", "--port", type=int, default=8080, help="Port number")
-    parser.add_argument("-w", "--window", type=int, default=5, help="sliding window size (default:5)")
-    parser.add_argument("-d", "--discard", action="store_true", help="Simulatepacket drop (server mode)")
+    parser.add_argument("-w", "--window", type=int, default=5, help="Sliding window size")
+    parser.add_argument("-d", "--discard", action="store_true", help="Simulate packet drop (server mode)")
     return parser.parse_args()
+
 
 def main():
     args = parse_args()
@@ -214,6 +196,7 @@ def main():
         client.start_client()
     else:
         print("[!] Must specify either --server or --client")
+
 
 if __name__ == "__main__":
     main()
