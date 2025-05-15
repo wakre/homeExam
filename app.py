@@ -50,7 +50,7 @@ class DRTPClient:
 
     def start_handshake(self):
         self.send_control("SYN")
-        print("SYN packet sent")
+        print("SYN packet is sent")
         if self.wait_for_response("SYN-ACK"):
             print("SYN-ACK packet is received")
             self.send_control("ACK")
@@ -90,7 +90,7 @@ class DRTPClient:
         duration = end_time - start_time
         file_size = os.path.getsize(self.file_path) * 8  # in bits
         throughput_mbps = file_size / (duration * 1024 * 1024)
-        print(f"[Client] File transfer complete in {duration:.2f} seconds")
+        print(f"[Clienten] File transfer completed in {duration:.2f} Seconds")
         print(f"The throughput is {throughput_mbps:.2f} Mbps")
 
         self.terminate_connection()
