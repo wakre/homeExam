@@ -101,6 +101,7 @@ class DRTPServer:
     def __init__(self, ip, port):
         self.ip = ip
         self.port = port
+        self.socket= socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((ip, port))
         print(f"[Server] Listening on {ip}:{port}")
@@ -136,32 +137,35 @@ class DRTPServer:
             print("FIN ACK packet is sent")
 
     def start_server(self):
-        addr = self.handle_handshake()
-        expected_seq = 0
+    expected_seq = 0
+    dropped_once = False  # Sørger for at vi bare dropper én pakke
+    with open("received_file", "wb") as f:
+        while True:
+            try:
+                packet, addr = self.sock.recvfrom(2048)
+                seq = int(packet[:8].decode())
+                data = packet[8:]
 
-        with open("received_file", "wb") as f:
-            while True:
-                try:
-                    packet, addr = self.sock.recvfrom(2048)
-                    seq, ack, flags, win = self.parse_header(packet)
-                    data = packet[HEADER_SIZE:]
+                # Simuler dropp én gang (kun første gang vi mottar riktig pakke)
+                if self.discard and not dropped_once and seq == expected_seq:
+                    print(f"[Server] Simulating drop for packet {seq}")
+                    dropped_once = True
+                    continue  # Ikke skriv til fil eller send ACK
 
-                    if flags == 0b0010:  # FIN
-                        self.handle_termination(packet, addr)
-                        break
+                if seq == expected_seq:
+                    f.write(data)
+                    print(f"{time.strftime('%H:%M:%S')} -- packet {seq} is received")
+                    self.send_ack(addr, seq)
+                    print(f"{time.strftime('%H:%M:%S')} -- sending ack for the received {seq}")
+                    expected_seq += 1
+                else:
+                    print(f"{time.strftime('%H:%M:%S')} -- Unexpected seq {seq}, expected {expected_seq}")
+                    self.send_ack(addr, expected_seq - 1)
+            except KeyboardInterrupt:
+                print("\n[Server] Interrupted. Exiting.")
+                break
 
-                    if seq == expected_seq:
-                        f.write(data)
-                        print(f"{time.strftime('%H:%M:%S')} -- packet {seq} is received")
-                        self.send_ack(addr, seq)
-                        print(f"{time.strftime('%H:%M:%S')} -- sending ack for the received {seq}")
-                        expected_seq += 1
-                    else:
-                        self.send_ack(addr, expected_seq - 1)
-
-                except KeyboardInterrupt:
-                    print("\n[Server] Interrupted. Exiting.")
-                    break
+                   
 
 # --- Argparse Wrapper ---
 def parse_args():
@@ -171,13 +175,14 @@ def parse_args():
     parser.add_argument("-f", "--file", type=str, help="File to send (client mode)")
     parser.add_argument("-ip", "--ip", type=str, default="127.0.0.1", help="IP address")
     parser.add_argument("-p", "--port", type=int, default=8080, help="Port number")
+    parser.add_argument("-d", "--discard", action="store_true", help="Simulatepacket drop (server mode)")
     return parser.parse_args()
 
 def main():
     args = parse_args()
 
     if args.server:
-        server = DRTPServer(args.ip, args.port)
+        server = DRTPServer(args.ip, args.port, discard=args.discard)
         server.start_server()
     elif args.client:
         if not args.file:
