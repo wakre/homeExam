@@ -11,7 +11,7 @@ HEADER_SIZE = 8
 
 # --- Client ---
 class DRTPClient:
-    def __init__(self, file_path, server_ip, server_port):
+    def __init__(self, file_path, server_ip, server_port, window_size):
         self.file_path = file_path
         self.server_ip = server_ip
         self.server_port = server_port
