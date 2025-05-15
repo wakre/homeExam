@@ -2,14 +2,18 @@ import socket
 import os
 import time
 import argparse
-from struct import pack, unpack
+from struct import pack, unpack #for packing/unpacking binary header 
 
 # --- Packet Header ---
-# 8-byte header: seq (4), ack (2), flags (1), window (1)
+# header is 8 bytes total: seq (4), ack (2), flags (1), window (1)
 HEADER_FORMAT = '!IHBB'
-HEADER_SIZE = 8
+HEADER_SIZE = 8 
 
 # --- Client ---
+"""the class DRTPClient have the responsible for sending a file over the UDP, but also using a custom protocol that have almost the same behavoirs og the TCP. 
+the class function is to connect to the server via 3-way handshake. 
+and it read and send a file iin shunks, it also ensuring reliability using sliding window. it also does handling (ACKs). 
+the client class have also a important work, it is to resend a lost packet after timeout"""
 class DRTPClient:
     def __init__(self, file_path, server_ip, server_port, window_size):
         self.file_path = file_path
