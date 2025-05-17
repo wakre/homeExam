@@ -112,7 +112,7 @@ class DRTPClient:
         end_time = time.time()
         duration = end_time - start_time
         file_size = os.path.getsize(self.file_path) * 8
-        throughput_mbps = file_size / (duration * 1024 * 1024)
+        throughput_mbps = file_size / (duration * 1_000_000)
         print(f"[Client] File transfer completed in {duration:.2f} seconds")
         print(f"[Client] Throughput: {throughput_mbps:.2f} Mbps")
 
