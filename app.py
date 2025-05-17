@@ -84,7 +84,7 @@ class DRTPClient:
            # Here is the main loop: keeps running while there is data to send or unacknowledged packets in the window
             while not finished or window:
                 while len(window) < self.window_size and not finished:  # send packets until window is full or the file ends
-                    data = f.read(1016)
+                    data = f.read(992)
                     if not data:
                         finished = True
                         break
